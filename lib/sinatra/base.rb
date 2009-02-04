@@ -689,6 +689,7 @@ module Sinatra
       def production? ; environment == :production ; end
 
       def configure(*envs, &block)
+        return if reloading?
         yield if envs.empty? || envs.include?(environment.to_sym)
       end
 
@@ -715,8 +716,19 @@ module Sinatra
       end
 
       def call(env)
-        construct_middleware if @callsite.nil?
-        @callsite.call(env)
+        synchronize do
+          reload! if reload?
+          construct_middleware if @callsite.nil?
+          @callsite.call(env)
+        end
+      end
+
+      def reload!
+        @reloading = true
+        superclass.send :reset!, self
+        $LOADED_FEATURES.delete("sinatra.rb")
+        ::Kernel.load app_file
+        @reloading = false
       end
 
     private
@@ -745,7 +757,7 @@ module Sinatra
         @callsite = nil
       end
 
-      def inherited(subclass)
+      def reset!(subclass = self)
         subclass.routes     = dupe_routes
         subclass.templates  = templates.dup
         subclass.conditions = []
@@ -753,7 +765,27 @@ module Sinatra
         subclass.errors     = errors.dup
         subclass.middleware = middleware.dup
         subclass.send :reset_middleware
+      end
+
+      def inherited(subclass)
+        reset!(subclass)
         super
+      end
+
+      def reloading?
+        @reloading ||= false
+      end
+
+      def mutex
+        @mutex ||= Mutex.new
+      end
+
+      def synchronize(&block)
+        if lock?
+          mutex.synchronize(&block)
+        else
+          yield
+        end
       end
 
       def dupe_routes
@@ -787,6 +819,8 @@ module Sinatra
     set :root, Proc.new { app_file && File.expand_path(File.dirname(app_file)) }
     set :views, Proc.new { root && File.join(root, 'views') }
     set :public, Proc.new { root && File.join(root, 'public') }
+    set :reload, Proc.new { app_file? && app_file !~ /\.ru$/i && development? }
+    set :lock, Proc.new { reload? }
 
     # static files route
     get(/.*[^\/]$/) do
@@ -871,45 +905,11 @@ module Sinatra
     set :methodoverride, true
     set :static, true
     set :run, false
-    set :reload, Proc.new { app_file? && app_file !~ /\.ru$/i && development? }
-    set :lock, Proc.new { reload? }
-
-    def self.reloading?
-      @reloading ||= false
-    end
-
-    def self.configure(*envs)
-      super unless reloading?
-    end
-
-    def self.call(env)
-      synchronize do
-        reload! if reload?
-        super
-      end
-    end
-
-    def self.reload!
-      @reloading = true
-      superclass.send :inherited, self
-      $LOADED_FEATURES.delete("sinatra.rb")
-      ::Kernel.load app_file
-      @reloading = false
-    end
 
     def self.register(*extensions, &block)
       added_methods = extensions.map {|m| m.public_instance_methods }.flatten
       Delegator.delegate *added_methods
       super(*extensions, &block)
-    end
-
-    @@mutex = Mutex.new
-    def self.synchronize(&block)
-      if lock?
-        @@mutex.synchronize(&block)
-      else
-        yield
-      end
     end
   end
 
