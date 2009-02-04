@@ -514,7 +514,7 @@ module Sinatra
           metadef("#{option}?") { !!__send__(option) }
           metadef("#{option}=") { |val| set(option, Proc.new{val}) }
         elsif value == self && option.respond_to?(:to_hash)
-          option.to_hash.each(&method(:set))
+          option.to_hash.each { |k,v| set(k, v) }
         elsif respond_to?("#{option}=")
           __send__ "#{option}=", value
         else
@@ -552,14 +552,10 @@ module Sinatra
       end
 
       def use_in_file_templates!
-        line = caller.detect do |s|
-          [
-           /lib\/sinatra.*\.rb/,
-           /\(.*\)/,
-           /rubygems\/custom_require\.rb/
-          ].all? { |x| s !~ x }
-        end
-        file = line.sub(/:\d+.*$/, '')
+        ignore = [/lib\/sinatra.*\.rb/, /\(.*\)/, /rubygems\/custom_require\.rb/]
+        file = caller.
+          map  { |line| line.sub(/:\d+.*$/, '') }.
+          find { |line| ignore.all? { |pattern| line !~ pattern } }
         if data = ::IO.read(file).split('__END__')[1]
           data.gsub!(/\r\n/, "\n")
           template = nil
@@ -642,7 +638,12 @@ module Sinatra
 
         define_method "#{verb} #{path}", &block
         unbound_method = instance_method("#{verb} #{path}")
-        block = lambda { unbound_method.bind(self).call(*@block_params) }
+        block =
+          if block.arity != 0
+            lambda { unbound_method.bind(self).call(*@block_params) }
+          else
+            lambda { unbound_method.bind(self).call }
+          end
 
         (routes[verb] ||= []).
           push([pattern, keys, conditions, block]).last
@@ -947,4 +948,10 @@ module Sinatra
   def self.helpers(*extensions, &block)
     Default.helpers(*extensions, &block)
   end
+end
+
+# Define String#each under 1.9 for Rack compatibility. This should be
+# removed once Rack is fully 1.9 compatible.
+class String
+  alias_method :each, :each_line unless ''.respond_to? :each
 end
