@@ -1,41 +1,44 @@
 require 'sinatra/base'
 
 module Sinatra
-
   module Test
     include Rack::Utils
 
+    def self.included(base)
+      Sinatra::Default.set(:environment, :test)
+    end
+
     attr_reader :app, :request, :response
 
-    def make_request(verb, path, *args)
+    def self.deprecate(framework)
+      warn <<-EOF
+Warning: support for the #{framework} testing framework is deprecated and
+will be dropped in Sinatra 1.0. See <http://sinatra.github.com/testing.html>
+for more information.
+      EOF
+    end
+
+    def make_request(verb, path, body=nil, options={})
       @app = Sinatra::Application if @app.nil? && defined?(Sinatra::Application)
       fail "@app not set - cannot make request" if @app.nil?
+
       @request = Rack::MockRequest.new(@app)
-      opts, input =
-        case args.size
-        when 2 # input, env
-          input, env = args
-          if input.kind_of?(Hash) # params, env
-            [env, param_string(input)]
-          else
-            [env, input]
-          end
-        when 1 # params
-          if (data = args.first).kind_of?(Hash)
-            env = (data.delete(:env) || {})
-            [env, param_string(data)]
-          else
-            [{}, data]
-          end
-        when 0
-          [{}, '']
-        else
-          raise ArgumentError, "zero, one, or two arguments expected"
-        end
-      opts = rack_opts(opts)
-      opts[:input] ||= input
+      options = { :lint => true }.merge(options || {})
+
+      case
+      when body.respond_to?(:to_hash)
+        options.merge! body.delete(:env) if body.key?(:env)
+        options[:input] = param_string(body)
+      when body.respond_to?(:to_str)
+        options[:input] = body
+      when body.nil?
+        options[:input] = ''
+      else
+        raise ArgumentError, "body must be a Hash, String, or nil"
+      end
+
       yield @request if block_given?
-      @response = @request.request(verb, path, opts)
+      @response = @request.request(verb, path, rack_options(options))
     end
 
     def get(path, *args, &b)  ; make_request('GET', path, *args, &b) ; end
@@ -65,18 +68,20 @@ module Sinatra
       super || (@response && @response.respond_to?(symbol, include_private))
     end
 
-    RACK_OPT_NAMES = {
-      :accept => "HTTP_ACCEPT",
-      :agent => "HTTP_USER_AGENT",
-      :host => "HTTP_HOST",
-      :session => "HTTP_COOKIE",
-      :cookies => "HTTP_COOKIE",
-      :content_type => "CONTENT_TYPE"
+  private
+
+    RACK_OPTIONS = {
+      :accept       => 'HTTP_ACCEPT',
+      :agent        => 'HTTP_USER_AGENT',
+      :host         => 'HTTP_HOST',
+      :session      => 'rack.session',
+      :cookies      => 'HTTP_COOKIE',
+      :content_type => 'CONTENT_TYPE'
     }
 
-    def rack_opts(opts)
+    def rack_options(opts)
       opts.merge(:lint => true).inject({}) do |hash,(key,val)|
-        key = RACK_OPT_NAMES[key] || key
+        key = RACK_OPTIONS[key] || key
         hash[key] = val
         hash
       end
@@ -115,6 +120,7 @@ module Sinatra
 
     def initialize(app=nil)
       @app = app || Sinatra::Application
+      @app.set(:environment, :test)
     end
   end
 end

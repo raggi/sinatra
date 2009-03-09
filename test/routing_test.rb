@@ -44,6 +44,27 @@ describe "Routing" do
     assert_equal 404, status
   end
 
+  it 'takes multiple definitions of a route' do
+    mock_app {
+      user_agent(/Foo/)
+      get '/foo' do
+        'foo'
+      end
+
+      get '/foo' do
+        'not foo'
+      end
+    }
+
+    get '/foo', {}, 'HTTP_USER_AGENT' => 'Foo'
+    assert ok?
+    assert_equal 'foo', body
+
+    get '/foo'
+    assert ok?
+    assert_equal 'not foo', body
+  end
+
   it "exposes params with indifferent hash" do
     mock_app {
       get '/:foo' do
@@ -139,6 +160,32 @@ describe "Routing" do
     assert ok?
   end
 
+  it "matches a dot ('.') as part of a named param" do
+    mock_app {
+      get '/:foo/:bar' do
+        params[:foo]
+      end
+    }
+
+    get '/user@example.com/name'
+    assert_equal 200, response.status
+    assert_equal 'user@example.com', body
+  end
+
+  it "matches a literal dot ('.') outside of named params" do
+    mock_app {
+      get '/:file.:ext' do
+        assert_equal 'pony', params[:file]
+        assert_equal 'jpg', params[:ext]
+        'right on'
+      end
+    }
+
+    get '/pony.jpg'
+    assert_equal 200, response.status
+    assert_equal 'right on', body
+  end
+
   it "literally matches . in paths" do
     route_def '/test.bar'
 
@@ -158,7 +205,7 @@ describe "Routing" do
   it "literally matches + in paths" do
     route_def '/te+st/'
 
-    get '/te+st/'
+    get '/te%2Bst/'
     assert ok?
     get '/teeeeeeest/'
     assert not_found?
@@ -243,7 +290,7 @@ describe "Routing" do
     assert_equal 'looks good', body
   end
 
-  it "supports paths that include spaces" do
+  it "matches paths that include spaces encoded with %20" do
     mock_app {
       get '/path with spaces' do
         'looks good'
@@ -251,6 +298,18 @@ describe "Routing" do
     }
 
     get '/path%20with%20spaces'
+    assert ok?
+    assert_equal 'looks good', body
+  end
+
+  it "matches paths that include spaces encoded with +" do
+    mock_app {
+      get '/path with spaces' do
+        'looks good'
+      end
+    }
+
+    get '/path+with+spaces'
     assert ok?
     assert_equal 'looks good', body
   end

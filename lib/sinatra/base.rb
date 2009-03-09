@@ -514,7 +514,7 @@ module Sinatra
           metadef("#{option}?") { !!__send__(option) }
           metadef("#{option}=") { |val| set(option, Proc.new{val}) }
         elsif value == self && option.respond_to?(:to_hash)
-          option.to_hash.each { |k,v| set(k, v) }
+          option.to_hash.each(&method(:set))
         elsif respond_to?("#{option}=")
           __send__ "#{option}=", value
         else
@@ -552,10 +552,14 @@ module Sinatra
       end
 
       def use_in_file_templates!
-        ignore = [/lib\/sinatra.*\.rb/, /\(.*\)/, /rubygems\/custom_require\.rb/]
-        file = caller.
-          map  { |line| line.sub(/:\d+.*$/, '') }.
-          find { |line| ignore.all? { |pattern| line !~ pattern } }
+        line = caller.detect do |s|
+          [
+           /lib\/sinatra.*\.rb/,
+           /\(.*\)/,
+           /rubygems\/custom_require\.rb/
+          ].all? { |x| s !~ x }
+        end
+        file = line.sub(/:\d+.*$/, '')
         if data = ::IO.read(file).split('__END__')[1]
           data.gsub!(/\r\n/, "\n")
           template = nil
@@ -638,12 +642,7 @@ module Sinatra
 
         define_method "#{verb} #{path}", &block
         unbound_method = instance_method("#{verb} #{path}")
-        block =
-          if block.arity != 0
-            lambda { unbound_method.bind(self).call(*@block_params) }
-          else
-            lambda { unbound_method.bind(self).call }
-          end
+        block = lambda { unbound_method.bind(self).call(*@block_params) }
 
         (routes[verb] ||= []).
           push([pattern, keys, conditions, block]).last
@@ -690,7 +689,6 @@ module Sinatra
       def production? ; environment == :production ; end
 
       def configure(*envs, &block)
-        return if reloading?
         yield if envs.empty? || envs.include?(environment.to_sym)
       end
 
@@ -717,19 +715,8 @@ module Sinatra
       end
 
       def call(env)
-        synchronize do
-          reload! if reload?
-          construct_middleware if @callsite.nil?
-          @callsite.call(env)
-        end
-      end
-
-      def reload!
-        @reloading = true
-        superclass.send :reset!, self
-        $LOADED_FEATURES.delete("sinatra.rb")
-        ::Kernel.load app_file
-        @reloading = false
+        construct_middleware if @callsite.nil?
+        @callsite.call(env)
       end
 
     private
@@ -758,7 +745,7 @@ module Sinatra
         @callsite = nil
       end
 
-      def reset!(subclass = self)
+      def inherited(subclass)
         subclass.routes     = dupe_routes
         subclass.templates  = templates.dup
         subclass.conditions = []
@@ -766,27 +753,7 @@ module Sinatra
         subclass.errors     = errors.dup
         subclass.middleware = middleware.dup
         subclass.send :reset_middleware
-      end
-
-      def inherited(subclass)
-        reset!(subclass)
         super
-      end
-
-      def reloading?
-        @reloading ||= false
-      end
-
-      def mutex
-        @mutex ||= Mutex.new
-      end
-
-      def synchronize(&block)
-        if lock?
-          mutex.synchronize(&block)
-        else
-          yield
-        end
       end
 
       def dupe_routes
@@ -820,8 +787,6 @@ module Sinatra
     set :root, Proc.new { app_file && File.expand_path(File.dirname(app_file)) }
     set :views, Proc.new { root && File.join(root, 'views') }
     set :public, Proc.new { root && File.join(root, 'public') }
-    set :reload, Proc.new { app_file? && app_file !~ /\.ru$/i && development? }
-    set :lock, Proc.new { reload? }
 
     # static files route
     get(/.*[^\/]$/) do
@@ -906,11 +871,45 @@ module Sinatra
     set :methodoverride, true
     set :static, true
     set :run, false
+    set :reload, Proc.new { app_file? && app_file !~ /\.ru$/i && development? }
+    set :lock, Proc.new { reload? }
+
+    def self.reloading?
+      @reloading ||= false
+    end
+
+    def self.configure(*envs)
+      super unless reloading?
+    end
+
+    def self.call(env)
+      synchronize do
+        reload! if reload?
+        super
+      end
+    end
+
+    def self.reload!
+      @reloading = true
+      superclass.send :inherited, self
+      $LOADED_FEATURES.delete("sinatra.rb")
+      ::Kernel.load app_file
+      @reloading = false
+    end
 
     def self.register(*extensions, &block)
       added_methods = extensions.map {|m| m.public_instance_methods }.flatten
       Delegator.delegate *added_methods
       super(*extensions, &block)
+    end
+
+    @@mutex = Mutex.new
+    def self.synchronize(&block)
+      if lock?
+        @@mutex.synchronize(&block)
+      else
+        yield
+      end
     end
   end
 
@@ -948,10 +947,4 @@ module Sinatra
   def self.helpers(*extensions, &block)
     Default.helpers(*extensions, &block)
   end
-end
-
-# Define String#each under 1.9 for Rack compatibility. This should be
-# removed once Rack is fully 1.9 compatible.
-class String
-  alias_method :each, :each_line unless ''.respond_to? :each
 end

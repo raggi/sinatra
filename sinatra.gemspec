@@ -3,8 +3,8 @@ Gem::Specification.new do |s|
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
 
   s.name = 'sinatra'
-  s.version = '0.9.0.4'
-  s.date = '2009-01-25'
+  s.version = '0.9.1'
+  s.date = '2009-03-02'
 
   s.description = "Classy web-development dressed in a DSL"
   s.summary     = "Classy web-development dressed in a DSL"
@@ -70,6 +70,7 @@ Gem::Specification.new do |s|
     test/builder_test.rb
     test/data/reload_app_file.rb
     test/erb_test.rb
+    test/extensions_test.rb
     test/filter_test.rb
     test/haml_test.rb
     test/helper.rb
@@ -103,7 +104,7 @@ Gem::Specification.new do |s|
   s.test_files = s.files.select {|path| path =~ /^test\/.*_test.rb/}
 
   s.extra_rdoc_files = %w[README.rdoc LICENSE]
-  s.add_dependency 'rack', '>= 0.9.1'
+  s.add_dependency 'rack', '>= 0.9.1', '< 1.0'
 
   s.has_rdoc = true
   s.homepage = "http://sinatra.rubyforge.org"

@@ -68,6 +68,20 @@ describe 'Helpers#redirect' do
     assert_equal '', body
     assert_equal '/foo', response['Location']
   end
+
+  it 'redirects back to request.referer when passed back' do
+    mock_app {
+      get '/try_redirect' do
+        redirect back
+      end
+    }
+
+    request = Rack::MockRequest.new(@app)
+    response = request.get('/try_redirect', 'HTTP_REFERER' => '/foo')
+    assert_equal 302, response.status
+    assert_equal '/foo', response['Location']
+  end
+
 end
 
 describe 'Helpers#error' do
@@ -123,6 +137,36 @@ describe 'Helpers#not_found' do
     get '/'
     assert_equal 404, status
     assert_equal '', body
+  end
+end
+
+describe 'Helpers#headers' do
+  it 'sets headers on the response object when given a Hash' do
+    mock_app {
+      get '/' do
+        headers 'X-Foo' => 'bar', 'X-Baz' => 'bling'
+        'kthx'
+      end
+    }
+
+    get '/'
+    assert ok?
+    assert_equal 'bar', response['X-Foo']
+    assert_equal 'bling', response['X-Baz']
+    assert_equal 'kthx', body
+  end
+
+  it 'returns the response headers hash when no hash provided' do
+    mock_app {
+      get '/' do
+        headers['X-Foo'] = 'bar'
+        'kthx'
+      end
+    }
+
+    get '/'
+    assert ok?
+    assert_equal 'bar', response['X-Foo']
   end
 end
 
@@ -380,11 +424,25 @@ describe 'Helpers#etag' do
   end
 end
 
+describe 'Helpers#back' do
+  it "makes redirecting back pretty" do
+    mock_app {
+      get '/foo' do
+        redirect back
+      end
+    }
+
+    get '/foo', {}, 'HTTP_REFERER' => 'http://github.com'
+    assert redirect?
+    assert_equal "http://github.com", response.location
+  end
+end
+
 module HelperOne; def one; '1'; end; end
 module HelperTwo; def two; '2'; end; end
 
 describe 'Adding new helpers' do
-  it 'should allow passing a list of modules' do
+  it 'takes a list of modules to mix into the app' do
     mock_app {
       helpers HelperOne, HelperTwo
 
@@ -404,7 +462,7 @@ describe 'Adding new helpers' do
     assert_equal '2', body
   end
 
-  it 'should take a block and mix it into the app' do
+  it 'takes a block to mix into the app' do
     mock_app {
       helpers do
         def foo
@@ -419,5 +477,21 @@ describe 'Adding new helpers' do
 
     get '/'
     assert_equal 'foo', body
+  end
+
+  it 'evaluates the block in class context so that methods can be aliased' do
+    mock_app {
+      helpers do
+        alias_method :h, :escape_html
+      end
+
+      get '/' do
+        h('42 < 43')
+      end
+    }
+
+    get '/'
+    assert ok?
+    assert_equal '42 &lt; 43', body
   end
 end

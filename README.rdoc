@@ -159,8 +159,8 @@ Renders the inlined template string.
 
 === Accessing Variables in Templates
 
-Templates are evaluated within the same context as the route blocks. Instance
-variables set in route blocks are available in templates:
+Templates are evaluated within the same context as route handlers. Instance
+variables set in route handlers are direcly accessible by templates:
 
   get '/:id' do
     @foo = Foo.find(params[:id])
@@ -199,12 +199,11 @@ Templates may be defined at the end of the source file:
 
 NOTE: In-file templates defined in the source file that requires sinatra
 are automatically loaded. Call the <tt>use_in_file_templates!</tt>
-method explicitly if you have in-file templates in another source file.
+method explicitly if you have in-file templates in other source files.
 
 === Named Templates
 
-It's possible to define named templates using the top-level <tt>template</tt>
-method:
+Templates may also be defined using the top-level <tt>template</tt> method:
 
   template :layout do
     "%html\n  =yield\n"
@@ -228,7 +227,7 @@ is rendered. You can disable layouts by passing <tt>:layout => false</tt>.
 == Helpers
 
 Use the top-level <tt>helpers</tt> method to define helper methods for use in
-route blocks and templates:
+route handlers and templates:
 
   helpers do
     def bar(name)
@@ -244,7 +243,7 @@ route blocks and templates:
 
 Before filters are evaluated before each request within the context of the
 request and can modify the request and response. Instance variables set in
-filters are accessible by routes and templates.
+filters are accessible by routes and templates:
 
   before do
     @note = 'Hi!'
@@ -272,8 +271,7 @@ Or set the status and body ...
 
 == Passing
 
-A route can punt processing to the next matching route using the <tt>pass</tt>
-statement:
+A route can punt processing to the next matching route using <tt>pass</tt>:
 
   get '/guess/:who' do
     pass unless params[:who] == 'Frank'
@@ -403,85 +401,34 @@ typically don't have to +use+ them explicitly.
 
 == Testing
 
-The Sinatra::Test module includes a variety of helper methods for testing
-your Sinatra app. Sinatra includes support for Test::Unit, test-spec, RSpec,
-and Bacon through separate source files.
+The Sinatra::Test mixin and Sinatra::TestHarness class include a variety of
+helper methods for testing your Sinatra app:
 
-=== Test::Unit
-
-  require 'sinatra'
-  require 'sinatra/test/unit'
   require 'my_sinatra_app'
+  require 'test/unit'
+  require 'sinatra/test'
 
   class MyAppTest < Test::Unit::TestCase
+    include Sinatra::Test
+
     def test_my_default
       get '/'
-      assert_equal 'My Default Page!', @response.body
+      assert_equal 'Hello World!', @response.body
     end
 
-    def test_with_agent
-      get '/', :agent => 'Songbird'
-      assert_equal 'You're in Songbird!', @response.body
+    def test_with_params
+      get '/meet', {:name => 'Frank'}
+      assert_equal 'Hello Frank!', @response.body
     end
 
-    ...
-  end
-
-=== Test::Spec
-
-Install the test-spec gem and require <tt>'sinatra/test/spec'</tt> before
-your app:
-
-  require 'sinatra'
-  require 'sinatra/test/spec'
-  require 'my_sinatra_app'
-
-  describe 'My app' do
-    it "should show a default page" do
-      get '/'
-      should.be.ok
-      body.should.equal 'My Default Page!'
-    end
-
-    ...
-  end
-
-=== RSpec
-
-Install the rspec gem and require <tt>'sinatra/test/rspec'</tt> before
-your app:
-
-  require 'sinatra'
-  require 'sinatra/test/rspec'
-  require 'my_sinatra_app'
-
-  describe 'My app' do
-    it 'should show a default page' do
-      get '/'
-      @response.should be_ok
-      @response.body.should == 'My Default Page!'
-    end
-
-    ...
-
-  end
-
-=== Bacon
-
-  require 'sinatra'
-  require 'sinatra/test/bacon'
-  require 'my_sinatra_app'
-
-  describe 'My app' do
-    it 'should be ok' do
-      get '/'
-      should.be.ok
-      body.should == 'Im OK'
+    def test_with_rack_env
+      get '/', {}, :agent => 'Songbird'
+      assert_equal "You're using Songbird!", @response.body
     end
   end
 
-See Sinatra::Test for more information on +get+, +post+, +put+, and
-friends.
+See http://www.sinatrarb.com/testing.html for more on Sinatra::Test and using it
+with other test frameworks such as RSpec, Bacon, and test/spec.
 
 == Command line
 
@@ -527,9 +474,10 @@ To update the Sinatra sources in the future:
 
 * {Project Website}[http://sinatra.github.com/] - Additional documentation,
   news, and links to other resources.
-* {Contributing}[http://sinatra.github.com/contribute.html] - Find a bug? Need
+* {Contributing}[http://sinatra.github.com/contributing.html] - Find a bug? Need
   help? Have a patch?
 * {Lighthouse}[http://sinatra.lighthouseapp.com] - Issue tracking and release
   planning.
+* {Twitter}[http://twitter.com/sinatra]
 * {Mailing List}[http://groups.google.com/group/sinatrarb]
 * {IRC: #sinatra}[irc://chat.freenode.net/#sinatra] on http://freenode.net
