@@ -1404,7 +1404,7 @@ module Sinatra
       end
 
       def development?; environment == :development end
-      def production?;  environment == :production  end
+      def production?;  environment == :production || environment == :deployment  end
       def test?;        environment == :test        end
 
       # Set configuration options for Sinatra and/or the app.
